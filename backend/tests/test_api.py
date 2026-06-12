@@ -1,4 +1,5 @@
-from unittest.mock import patch
+from datetime import date, datetime
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -6,68 +7,9 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from src.api.main import create_app
-from src.domain.interfaces.repository import (
-    TransactionRepository,
-    UserRepository,
-)
 from src.domain.models.transaction import Transaction, TransactionType
 from src.domain.models.user import User
-
-class FakeUserRepo(UserRepository):
-    def __init__(self):
-        self._users: dict[str, User] = {}
-
-    async def create(self, user: User) -> User:
-        self._users[str(user.user_id)] = user
-        return user
-
-    async def get_by_id(self, user_id: str) -> User | None:
-        return self._users.get(user_id)
-
-    async def get_by_email(self, email: str) -> User | None:
-        for u in self._users.values():
-            if u.email == email:
-                return u
-        return None
-
-    async def update(self, user: User) -> User:
-        self._users[str(user.user_id)] = user
-        return user
-
-    async def delete(self, user_id: str) -> bool:
-        self._users.pop(user_id, None)
-        return True
-
-
-class FakeTxRepo(TransactionRepository):
-    def __init__(self):
-        self._txs: dict[str, Transaction] = {}
-
-    async def create(self, transaction: Transaction) -> Transaction:
-        self._txs[str(transaction.transaction_id)] = transaction
-        return transaction
-
-    async def get_by_id(self, transaction_id: str) -> Transaction | None:
-        return self._txs.get(transaction_id)
-
-    async def get_by_user_id(
-        self, user_id: str, page: int = 1, limit: int = 50
-    ) -> list[Transaction]:
-        user_txs = [
-            tx
-            for tx in self._txs.values()
-            if str(tx.user_id) == user_id
-        ]
-        start = (page - 1) * limit
-        return user_txs[start : start + limit]
-
-    async def update(self, transaction: Transaction) -> Transaction:
-        self._txs[str(transaction.transaction_id)] = transaction
-        return transaction
-
-    async def delete(self, transaction_id: str) -> bool:
-        self._txs.pop(transaction_id, None)
-        return True
+from src.domain.services.tax_engine import IVA_RATE
 
 
 @pytest.fixture
@@ -77,6 +19,7 @@ def app():
     from src.api.routes.users import get_user_repo
     from src.api.routes.transactions import get_tx_repo as get_tx_repo_transactions
     from src.api.routes.taxes import get_tx_repo as get_tx_repo_taxes
+    from tests.conftest import FakeTxRepo, FakeUserRepo
 
     user_repo = FakeUserRepo()
     tx_repo = FakeTxRepo()
@@ -92,6 +35,62 @@ async def client(app):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest_asyncio.fixture
+async def client_with_user(app):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post(
+            "/api/v1/users",
+            params={
+                "email": "exist@example.com",
+                "business_name": "Existing S.A.",
+                "business_type": "persona_juridica",
+                "nit": "1234-567890-123-4",
+                "regimen_fiscal": "general",
+            },
+        )
+        user_id = resp.json()["data"]["user_id"]
+        yield ac, user_id
+
+
+@pytest_asyncio.fixture
+async def client_with_tx(app):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post(
+            "/api/v1/users",
+            params={
+                "email": "withtx@example.com",
+                "business_name": "With Tx S.A.",
+                "business_type": "persona_natural",
+                "nit": "5678-123456-789-1",
+                "regimen_fiscal": "simplificado",
+            },
+        )
+        user_id = resp.json()["data"]["user_id"]
+
+        for amount in [1000.00, 1000.00]:
+            await ac.post(
+                "/api/v1/transactions",
+                params={
+                    "user_id": user_id,
+                    "type": "income",
+                    "amount": amount,
+                    "category": "ventas",
+                },
+            )
+        await ac.post(
+            "/api/v1/transactions",
+            params={
+                "user_id": user_id,
+                "type": "expense",
+                "amount": 500.00,
+                "category": "servicios",
+            },
+        )
+        yield ac, user_id
 
 
 class TestHealth:
@@ -112,8 +111,6 @@ class TestHealth:
     async def test_health_endpoint_timestamp_is_iso(self, client):
         response = await client.get("/health")
         data = response.json()
-        from datetime import datetime
-
         datetime.fromisoformat(data["timestamp"])
 
 
@@ -176,14 +173,44 @@ class TestUsersAPI:
 
     @pytest.mark.asyncio
     async def test_get_user_not_found(self, client):
-        response = await client.get(
-            "/api/v1/users/nonexistent-user-id"
-        )
+        response = await client.get("/api/v1/users/nonexistent-user-id")
         assert response.status_code == 200
         body = response.json()
         assert body["data"] is None
         assert len(body["errors"]) == 1
         assert body["errors"][0]["code"] == "NOT_FOUND"
+
+    @pytest.mark.asyncio
+    async def test_full_user_registration_flow(self, client):
+        resp = await client.post(
+            "/api/v1/users",
+            params={
+                "email": "fullflow@example.com",
+                "business_name": "Full Flow S.A.",
+                "business_type": "persona_juridica",
+                "nit": "9999-888888-777-6",
+                "nrc": "123456-78",
+                "regimen_fiscal": "general",
+            },
+        )
+        assert resp.status_code == 200
+        user_id = resp.json()["data"]["user_id"]
+        assert user_id is not None
+
+        get_resp = await client.get(f"/api/v1/users/{user_id}")
+        assert get_resp.status_code == 200
+        data = get_resp.json()["data"]
+        assert data["email"] == "fullflow@example.com"
+        assert data["user_id"] == user_id
+        assert data["regimen_fiscal"] == "general"
+
+    @pytest.mark.asyncio
+    async def test_missing_user_returns_proper_error(self, client):
+        response = await client.get("/api/v1/users/00000000-0000-0000-0000-000000000000")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["data"] is None
+        assert any(e["code"] == "NOT_FOUND" for e in body["errors"])
 
 
 class TestTransactionsAPI:
@@ -273,6 +300,25 @@ class TestTransactionsAPI:
         body = response.json()
         assert len(body["data"]) == 2
 
+    @pytest.mark.asyncio
+    async def test_transaction_after_user_exists(self, client_with_user):
+        ac, user_id = client_with_user
+        resp = await ac.post(
+            "/api/v1/transactions",
+            params={
+                "user_id": user_id,
+                "type": "income",
+                "amount": 750.00,
+                "category": "ventas",
+                "description": "Post-registration sale",
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["type"] == "income"
+        assert body["data"]["amount"] == "750.0"
+        assert body["data"]["category"] == "ventas"
+
 
 class TestTaxesAPI:
     @pytest.mark.asyncio
@@ -327,15 +373,27 @@ class TestTaxesAPI:
         assert data["total_expenses"] == "0"
         assert data["total_iva"] == "0.00"
 
+    @pytest.mark.asyncio
+    async def test_tax_projection_with_known_transactions(self, client_with_tx):
+        ac, user_id = client_with_tx
+        resp = await ac.get(
+            "/api/v1/taxes/projection",
+            params={"user_id": user_id, "year": date.today().year, "period": "monthly"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert Decimal(data["total_income"]) == Decimal("2000.00")
+        assert Decimal(data["total_expenses"]) == Decimal("500.00")
+        iva_on_income = (Decimal("2000.00") * IVA_RATE).quantize(Decimal("0.01"))
+        assert Decimal(data["total_iva"]) == iva_on_income
+
 
 class TestAppFactory:
     def test_create_app_with_middleware(self):
         app = create_app()
         assert app.title == "AT-SV Backend"
         assert app.version == "0.1.0"
-        middleware_classes = [
-            m.cls.__name__ for m in app.user_middleware
-        ]
+        middleware_classes = [m.cls.__name__ for m in app.user_middleware]
         assert "CORSMiddleware" in middleware_classes
 
     def test_create_app_routes_registered(self):
@@ -344,14 +402,24 @@ class TestAppFactory:
         assert "/health" in routes
         assert "/api/v1/users" in routes or "/api/v1/users/{user_id}" in routes
 
-    def test_custom_settings(self):
-        with patch(
-            "src.infrastructure.database.get_settings"
-        ) as mock_settings:
-            settings = mock_settings.return_value
-            settings.cors_origins = "https://example.com"
-            settings.title = "Custom App"
-            settings.version = "2.0.0"
+    @pytest.mark.asyncio
+    async def test_cors_headers_present_in_response(self):
+        app = create_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.get(
+                "/health",
+                headers={"Origin": "http://localhost:5173"},
+            )
+            assert "access-control-allow-origin" in resp.headers
 
-            app = create_app()
-            assert app.title == "AT-SV Backend"
+    @pytest.mark.asyncio
+    async def test_cors_headers_on_api_endpoints(self, client):
+        resp = await client.options(
+            "/api/v1/users",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        assert "access-control-allow-origin" in resp.headers

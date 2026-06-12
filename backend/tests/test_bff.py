@@ -1,7 +1,7 @@
 from decimal import Decimal
 
-from src.api.bff.response import BFFResponse, ResponseMeta, ErrorDetail
-from src.api.bff.schemas import UserBFF, TransactionBFF, TaxProjectionBFF
+from src.api.bff.response import BFFResponse, ErrorDetail, ResponseMeta
+from src.api.bff.schemas import TaxProjectionBFF, TransactionBFF, UserBFF
 
 
 class TestBFFResponse:
@@ -52,6 +52,29 @@ class TestBFFResponse:
         response = BFFResponse.ok(data="x")
         assert response.errors == []
 
+    def test_ok_with_pagination_meta(self):
+        meta = ResponseMeta(page=1, limit=25, total=100)
+        response = BFFResponse.ok(data=["a", "b", "c"], meta=meta)
+        assert response.meta.page == 1
+        assert response.meta.limit == 25
+        assert response.meta.total == 100
+        assert len(response.data) == 3
+
+    def test_error_with_multiple_errors(self):
+        response = BFFResponse.error(
+            code="VALIDATION_ERROR",
+            message="Multiple fields invalid",
+        )
+        second_error = ErrorDetail(code="FIELD_ERROR", message="email is invalid")
+        response.errors.append(second_error)
+        assert len(response.errors) == 2
+        assert response.errors[0].code == "VALIDATION_ERROR"
+        assert response.errors[1].code == "FIELD_ERROR"
+
+    def test_error_replaces_data_with_none(self):
+        response = BFFResponse.error(code="ERROR", message="Something failed")
+        assert response.data is None
+
 
 class TestUserBFF:
     def test_user_bff_creation(self):
@@ -80,6 +103,22 @@ class TestUserBFF:
         assert data["user_id"] == "id-1"
         assert data["email"] == "a@b.com"
         assert data["business_type"] == "persona_natural"
+
+    def test_user_bff_serialization_all_fields(self):
+        user = UserBFF(
+            user_id="abc-123-def",
+            email="user@domain.com",
+            business_name="Full Name S.A.",
+            business_type="persona_juridica",
+            regimen_fiscal="general",
+        )
+        data = user.model_dump()
+        assert data["user_id"] == "abc-123-def"
+        assert data["email"] == "user@domain.com"
+        assert data["business_name"] == "Full Name S.A."
+        assert data["business_type"] == "persona_juridica"
+        assert data["regimen_fiscal"] == "general"
+        assert len(data) == 5
 
 
 class TestTransactionBFF:
@@ -130,6 +169,20 @@ class TestTransactionBFF:
         data = tx.model_dump()
         assert data["type"] == "expense"
         assert data["iva"] == Decimal("13.00")
+
+    def test_transaction_bff_with_decimal_amounts(self):
+        tx = TransactionBFF(
+            transaction_id="tx-decimal",
+            type="income",
+            amount=Decimal("999999.99"),
+            category="ventas",
+            description="Large amount",
+            date="2025-06-01",
+            iva=Decimal("129999.9987"),
+            iva_rate=Decimal("0.13"),
+        )
+        assert tx.amount == Decimal("999999.99")
+        assert tx.iva == Decimal("129999.9987")
 
 
 class TestTaxProjectionBFF:
@@ -182,3 +235,17 @@ class TestTaxProjectionBFF:
         assert data["period"] == "quarterly"
         assert data["year"] == 2025
         assert data["estimated_iva_due"] == Decimal("26.00")
+
+    def test_tax_projection_bff_zero_edge_cases(self):
+        proj = TaxProjectionBFF(
+            total_iva=Decimal("0.00"),
+            total_pago_cuenta=Decimal("0.00"),
+            total_income=Decimal("0.00"),
+            total_expenses=Decimal("0.00"),
+            period="01",
+            year=2025,
+            estimated_iva_due=Decimal("0.00"),
+            estimated_pago_cuenta_due=Decimal("0.00"),
+        )
+        assert proj.total_iva == Decimal("0.00")
+        assert proj.estimated_iva_due == Decimal("0.00")
