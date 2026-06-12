@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from uuid import UUID
-from src.domain.models.user import User
+
 from src.domain.models.transaction import Transaction
+from src.domain.models.user import User
 
 
 class UserRepository(ABC):
@@ -10,7 +10,7 @@ class UserRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_by_id(self, user_id: UUID) -> User | None:
+    async def get_by_id(self, user_id: str) -> User | None:
         ...
 
     @abstractmethod
@@ -22,7 +22,7 @@ class UserRepository(ABC):
         ...
 
     @abstractmethod
-    async def delete(self, user_id: UUID) -> None:
+    async def delete(self, user_id: str) -> None:
         ...
 
 
@@ -32,11 +32,11 @@ class TransactionRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_by_id(self, transaction_id: UUID) -> Transaction | None:
+    async def get_by_id(self, transaction_id: str) -> Transaction | None:
         ...
 
     @abstractmethod
-    async def get_by_user_id(self, user_id: UUID) -> list[Transaction]:
+    async def get_by_user_id(self, user_id: str) -> list[Transaction]:
         ...
 
     @abstractmethod
@@ -44,5 +44,5 @@ class TransactionRepository(ABC):
         ...
 
     @abstractmethod
-    async def delete(self, transaction_id: UUID) -> None:
+    async def delete(self, transaction_id: str) -> None:
         ...
