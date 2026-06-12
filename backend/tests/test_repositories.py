@@ -5,12 +5,13 @@ from uuid import uuid4
 import pytest
 from moto import mock_aws
 
-from src.infrastructure.database import get_settings
-from src.infrastructure.repositories.user_repo import DynamoDBUserRepository
-from src.infrastructure.repositories.transaction_repo import DynamoDBTransactionRepository
-from src.domain.models.user import User
 from src.domain.models.transaction import Transaction, TransactionType
-
+from src.domain.models.user import User
+from src.infrastructure.database import get_settings
+from src.infrastructure.repositories.transaction_repo import (
+    DynamoDBTransactionRepository,
+)
+from src.infrastructure.repositories.user_repo import DynamoDBUserRepository
 
 SETTINGS = get_settings()
 
@@ -87,6 +88,14 @@ class TestDynamoDBUserRepository:
         assert stored.email == sample_user.email
 
     @pytest.mark.asyncio
+    async def test_create_user_with_full_model(self, repo, sample_user):
+        result = await repo.create(sample_user)
+        assert result.nit == "1234-567890-123-4"
+        assert result.nrc == "123456-7"
+        assert result.regimen_fiscal == "general"
+        assert result.business_type == "persona_juridica"
+
+    @pytest.mark.asyncio
     async def test_get_by_id_returns_none_for_missing(self, repo):
         result = await repo.get_by_id("nonexistent-id")
         assert result is None
@@ -108,7 +117,9 @@ class TestDynamoDBUserRepository:
     async def test_update_user(self, repo, sample_user):
         await repo.create(sample_user)
 
-        updated_user = sample_user.model_copy(update={"business_name": "Updated S.A."})
+        updated_user = sample_user.model_copy(
+            update={"business_name": "Updated S.A."}
+        )
         result = await repo.update(updated_user)
         assert result.business_name == "Updated S.A."
 
@@ -155,6 +166,27 @@ class TestDynamoDBTransactionRepository:
         assert stored.amount == sample_transaction.amount
 
     @pytest.mark.asyncio
+    async def test_create_transaction_with_various_amount_types(self, repo):
+        test_cases = [
+            ("0.01", Decimal("0.01")),
+            ("999999.99", Decimal("999999.99")),
+            ("100.00", Decimal("100.00")),
+        ]
+
+        for desc, amount in test_cases:
+            tx = Transaction(
+                user_id=uuid4(),
+                type=TransactionType.INCOME,
+                amount=amount,
+                category="ventas",
+                date=date.today(),
+            )
+            created = await repo.create(tx)
+            stored = await repo.get_by_id(str(created.transaction_id))
+            assert stored is not None
+            assert stored.amount == amount, f"Failed for amount {desc}"
+
+    @pytest.mark.asyncio
     async def test_get_by_id_returns_none_for_missing(self, repo):
         result = await repo.get_by_id("nonexistent-id")
         assert result is None
@@ -173,10 +205,66 @@ class TestDynamoDBTransactionRepository:
         assert results == []
 
     @pytest.mark.asyncio
+    async def test_get_by_user_id_pagination(self, repo):
+        user_id = uuid4()
+        for i in range(10):
+            tx = Transaction(
+                user_id=user_id,
+                type=TransactionType.INCOME,
+                amount=Decimal(f"{i+1}00.00"),
+                category="ventas",
+                date=date.today(),
+            )
+            await repo.create(tx)
+
+        limited = await repo.get_by_user_id(str(user_id), page=1, limit=3)
+        assert len(limited) == 3
+
+        default = await repo.get_by_user_id(str(user_id))
+        assert len(default) == 10
+
+    @pytest.mark.asyncio
+    async def test_get_by_user_id_with_multiple_users(self, repo):
+        user_a = uuid4()
+        user_b = uuid4()
+
+        for i in range(5):
+            await repo.create(
+                Transaction(
+                    user_id=user_a,
+                    type=TransactionType.INCOME,
+                    amount=Decimal("100.00"),
+                    category="ventas",
+                    date=date.today(),
+                )
+            )
+            await repo.create(
+                Transaction(
+                    user_id=user_b,
+                    type=TransactionType.EXPENSE,
+                    amount=Decimal("50.00"),
+                    category="servicios",
+                    date=date.today(),
+                )
+            )
+
+        user_a_txs = await repo.get_by_user_id(str(user_a))
+        user_b_txs = await repo.get_by_user_id(str(user_b))
+
+        assert len(user_a_txs) == 5
+        assert len(user_b_txs) == 5
+        for tx in user_a_txs:
+            assert tx.type == TransactionType.INCOME
+        for tx in user_b_txs:
+            assert tx.type == TransactionType.EXPENSE
+
+    @pytest.mark.asyncio
     async def test_update_transaction(self, repo, sample_transaction):
         await repo.create(sample_transaction)
 
-        updated = sample_transaction.model_copy(update={"description": "Updated description"})
+        updated = sample_transaction.model_copy(
+            update={"description": "Updated description"}
+        )
         result = await repo.update(updated)
         assert result.description == "Updated description"
 
