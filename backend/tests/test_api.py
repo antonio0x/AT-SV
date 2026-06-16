@@ -89,15 +89,12 @@ REGISTER_BODY = {
 def app():
     application = create_app()
 
-    from src.api.dependencies import get_user_repo
-    from src.api.routes.transactions import get_tx_repo as get_tx_repo_transactions
-    from src.api.routes.taxes import get_tx_repo as get_tx_repo_taxes
+    from src.api.dependencies import get_user_repo, get_tx_repo
 
     user_repo = FakeUserRepo()
     tx_repo = FakeTxRepo()
     application.dependency_overrides[get_user_repo] = lambda: user_repo
-    application.dependency_overrides[get_tx_repo_transactions] = lambda: tx_repo
-    application.dependency_overrides[get_tx_repo_taxes] = lambda: tx_repo
+    application.dependency_overrides[get_tx_repo] = lambda: tx_repo
 
     return application
 
@@ -258,62 +255,59 @@ class TestAuthAPI:
 class TestTransactionsAPI:
     @pytest.mark.asyncio
     async def test_create_transaction(self, client):
-        user_id = str(uuid4())
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
         response = await client.post(
             "/api/v1/transactions",
-            params={
-                "user_id": user_id,
+            json={
                 "type": "income",
-                "amount": 250.00,
+                "amount": "250.00",
                 "category": "ventas",
                 "description": "Product sale",
             },
         )
-        assert response.status_code == 200
+        assert response.status_code == 201
         body = response.json()
         assert body["errors"] == []
         assert body["data"]["type"] == "income"
-        assert body["data"]["amount"] == "250.0"
+        from decimal import Decimal
+        assert Decimal(body["data"]["amount"]) == Decimal("250")
         assert body["data"]["category"] == "ventas"
         assert body["data"]["description"] == "Product sale"
         assert "transaction_id" in body["data"]
         assert "date" in body["data"]
+        assert "created_at" in body["data"]
 
     @pytest.mark.asyncio
     async def test_create_expense_transaction(self, client):
-        user_id = str(uuid4())
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
         response = await client.post(
             "/api/v1/transactions",
-            params={
-                "user_id": user_id,
+            json={
                 "type": "expense",
-                "amount": 100.00,
+                "amount": "100.00",
                 "category": "servicios",
             },
         )
-        assert response.status_code == 200
+        assert response.status_code == 201
         body = response.json()
         assert body["data"]["type"] == "expense"
-        assert body["data"]["amount"] == "100.0"
+        from decimal import Decimal
+        assert Decimal(body["data"]["amount"]) == Decimal("100")
 
     @pytest.mark.asyncio
     async def test_list_transactions(self, client):
-        user_id = str(uuid4())
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
         for i in range(3):
             await client.post(
                 "/api/v1/transactions",
-                params={
-                    "user_id": user_id,
+                json={
                     "type": "income",
-                    "amount": 100.0 * (i + 1),
+                    "amount": "100.0",
                     "category": "ventas",
                 },
             )
 
-        response = await client.get(
-            "/api/v1/transactions",
-            params={"user_id": user_id},
-        )
+        response = await client.get("/api/v1/transactions")
         assert response.status_code == 200
         body = response.json()
         assert len(body["data"]) == 3
@@ -322,79 +316,170 @@ class TestTransactionsAPI:
 
     @pytest.mark.asyncio
     async def test_list_transactions_pagination(self, client):
-        user_id = str(uuid4())
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
         for i in range(5):
             await client.post(
                 "/api/v1/transactions",
-                params={
-                    "user_id": user_id,
+                json={
                     "type": "income",
-                    "amount": 100.0,
+                    "amount": "100.0",
                     "category": "ventas",
                 },
             )
 
         response = await client.get(
             "/api/v1/transactions",
-            params={"user_id": user_id, "page": 1, "limit": 2},
+            params={"page": 1, "limit": 2},
         )
         assert response.status_code == 200
         body = response.json()
         assert len(body["data"]) == 2
 
+    @pytest.mark.asyncio
+    async def test_get_transaction_by_id(self, client):
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
+        create_resp = await client.post(
+            "/api/v1/transactions",
+            json={"type": "income", "amount": "100.0", "category": "ventas"},
+        )
+        tx_id = create_resp.json()["data"]["transaction_id"]
+        response = await client.get(f"/api/v1/transactions/{tx_id}")
+        assert response.status_code == 200
+        assert response.json()["data"]["transaction_id"] == tx_id
+
+    @pytest.mark.asyncio
+    async def test_get_transaction_not_found(self, client):
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
+        response = await client.get("/api/v1/transactions/nonexistent-id")
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_transaction_not_owned(self, app, client):
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
+        create_resp = await client.post(
+            "/api/v1/transactions",
+            json={"type": "income", "amount": "100.0", "category": "ventas"},
+        )
+        tx_id = create_resp.json()["data"]["transaction_id"]
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client_b:
+            await client_b.post(
+                "/api/v1/auth/register",
+                json={**REGISTER_BODY, "email": "user2@example.com"},
+            )
+            response = await client_b.get(f"/api/v1/transactions/{tx_id}")
+            assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_update_transaction(self, client):
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
+        create_resp = await client.post(
+            "/api/v1/transactions",
+            json={"type": "income", "amount": "100.0", "category": "ventas"},
+        )
+        tx_id = create_resp.json()["data"]["transaction_id"]
+
+        response = await client.put(
+            f"/api/v1/transactions/{tx_id}",
+            json={"amount": "200.0", "category": "servicios"},
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["amount"] == "200.0"
+        assert data["category"] == "servicios"
+
+    @pytest.mark.asyncio
+    async def test_delete_transaction(self, client):
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
+        create_resp = await client.post(
+            "/api/v1/transactions",
+            json={"type": "income", "amount": "100.0", "category": "ventas"},
+        )
+        tx_id = create_resp.json()["data"]["transaction_id"]
+
+        response = await client.delete(f"/api/v1/transactions/{tx_id}")
+        assert response.status_code == 200
+        assert response.json()["data"]["message"] == "Transacción eliminada"
+
+    @pytest.mark.asyncio
+    async def test_transactions_unauthenticated(self, app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as fresh:
+            response = await fresh.post(
+                "/api/v1/transactions",
+                json={"type": "income", "amount": "100.0", "category": "ventas"},
+            )
+            assert response.status_code == 401
+            body = response.json()
+            assert body["detail"]["errors"][0]["code"] == "UNAUTHENTICATED"
+
 
 class TestTaxesAPI:
     @pytest.mark.asyncio
-    async def test_tax_projection(self, client):
-        user_id = str(uuid4())
+    async def test_tax_projection_with_year_filter(self, client):
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
         await client.post(
             "/api/v1/transactions",
-            params={
-                "user_id": user_id,
+            json={
                 "type": "income",
-                "amount": 1000.00,
+                "amount": "1000.00",
                 "category": "ventas",
+                "date": "2026-01-01",
             },
         )
         await client.post(
             "/api/v1/transactions",
-            params={
-                "user_id": user_id,
+            json={
                 "type": "expense",
-                "amount": 300.00,
+                "amount": "300.00",
                 "category": "servicios",
+                "date": "2025-01-01",
             },
         )
 
         response = await client.get(
             "/api/v1/taxes/projection",
-            params={"user_id": user_id, "year": 2025, "period": "monthly"},
+            params={"year": 2026, "period": "monthly"},
         )
         assert response.status_code == 200
         body = response.json()
         assert body["errors"] == []
         data = body["data"]
-        assert data["total_income"] == "1000.0"
-        assert data["total_expenses"] == "300.0"
+        from decimal import Decimal
+        assert Decimal(data["total_income"]) == Decimal("1000")
+        assert Decimal(data["total_expenses"]) == Decimal("0")
         assert data["total_iva"] == "130.00"
         assert data["total_pago_cuenta"] == "10.00"
         assert data["period"] == "monthly"
-        assert data["year"] == 2025
+        assert data["year"] == 2026
         assert data["estimated_iva_due"] == "130.00"
         assert data["estimated_pago_cuenta_due"] == "10.00"
 
     @pytest.mark.asyncio
     async def test_tax_projection_no_transactions(self, client):
-        user_id = str(uuid4())
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
         response = await client.get(
             "/api/v1/taxes/projection",
-            params={"user_id": user_id, "year": 2025, "period": "yearly"},
+            params={"year": 2025, "period": "yearly"},
         )
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["total_income"] == "0"
         assert data["total_expenses"] == "0"
         assert data["total_iva"] == "0.00"
+
+    @pytest.mark.asyncio
+    async def test_tax_projection_unauthenticated(self, app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as fresh:
+            response = await fresh.get(
+                "/api/v1/taxes/projection",
+                params={"year": 2025, "period": "yearly"},
+            )
+            assert response.status_code == 401
+            body = response.json()
+            assert body["detail"]["errors"][0]["code"] == "UNAUTHENTICATED"
 
 
 class TestAppFactory:
@@ -409,9 +494,15 @@ class TestAppFactory:
 
     def test_create_app_routes_registered(self):
         app = create_app()
-        routes = [r.path for r in app.routes]
-        assert "/api/v1/health" in routes
-        assert "/api/v1/users/me" in routes or "/api/v1/users/{user_id}" in routes
+        route_paths = set()
+        for r in app.routes:
+            if hasattr(r, "path"):
+                route_paths.add(r.path)
+            elif hasattr(r, "original_router"):
+                for sr in r.original_router.routes:
+                    route_paths.add(f"{r.include_context.prefix}{sr.path}")
+        assert "/api/v1/health" in route_paths
+        assert "/api/v1/auth/register" in route_paths
 
     def test_custom_settings(self):
         with patch(
