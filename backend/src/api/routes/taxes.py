@@ -5,14 +5,17 @@ from src.api.bff.schemas import TaxProjectionBFF
 from src.application.use_cases.get_tax_projection import (
     GetTaxProjectionUseCase,
 )
-from src.infrastructure.repositories.transaction_repo import (
-    DynamoDBTransactionRepository,
-)
+from src.infrastructure.database import get_settings
 
 router = APIRouter(tags=["taxes"])
 
 
 def get_tx_repo():
+    settings = get_settings()
+    if settings.use_fake_repos:
+        from src.infrastructure.fake_repos import fake_transaction_repo
+        return fake_transaction_repo
+    from src.infrastructure.repositories.transaction_repo import DynamoDBTransactionRepository
     return DynamoDBTransactionRepository()
 
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from uuid import UUID, uuid4
+from uuid import uuid4
 from pydantic import BaseModel, Field
 
 
@@ -17,8 +17,8 @@ class DeclarationStatus(str, Enum):
 
 
 class TaxDeclaration(BaseModel):
-    declaration_id: UUID = Field(default_factory=uuid4)
-    user_id: UUID
+    declaration_id: str = Field(default_factory=lambda: str(uuid4()))
+    user_id: str
     form_type: FormType
     period: str = Field(pattern=r"^(0[1-9]|1[0-2])$")
     year: int

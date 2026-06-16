@@ -67,7 +67,7 @@ class TestDynamoDBUserRepository:
     @pytest.fixture
     def sample_user(self) -> User:
         return User(
-            user_id=uuid4(),
+            user_id=str(uuid4()),
             email="test@example.com",
             business_name="Test S.A. de C.V.",
             business_type="persona_juridica",
@@ -134,8 +134,8 @@ class TestDynamoDBTransactionRepository:
     @pytest.fixture
     def sample_transaction(self) -> Transaction:
         return Transaction(
-            transaction_id=uuid4(),
-            user_id=uuid4(),
+            transaction_id=str(uuid4()),
+            user_id=str(uuid4()),
             type=TransactionType.INCOME,
             amount=Decimal("150.00"),
             category="ventas",

@@ -1,9 +1,11 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from jose import jwt
 
 from src.api.main import create_app
 from src.domain.interfaces.repository import (
@@ -12,6 +14,8 @@ from src.domain.interfaces.repository import (
 )
 from src.domain.models.transaction import Transaction, TransactionType
 from src.domain.models.user import User
+from src.infrastructure.database import get_settings
+
 
 class FakeUserRepo(UserRepository):
     def __init__(self):
@@ -70,11 +74,22 @@ class FakeTxRepo(TransactionRepository):
         return True
 
 
+REGISTER_BODY = {
+    "email": "user@example.com",
+    "password": "securePass123",
+    "business_name": "Test S.A. de C.V.",
+    "business_type": "persona_juridica",
+    "nit": "1234-567890-123-4",
+    "nrc": "123456-7",
+    "regimen_fiscal": "general",
+}
+
+
 @pytest.fixture
 def app():
     application = create_app()
 
-    from src.api.routes.users import get_user_repo
+    from src.api.dependencies import get_user_repo
     from src.api.routes.transactions import get_tx_repo as get_tx_repo_transactions
     from src.api.routes.taxes import get_tx_repo as get_tx_repo_taxes
 
@@ -97,12 +112,12 @@ async def client(app):
 class TestHealth:
     @pytest.mark.asyncio
     async def test_health_endpoint_returns_200(self, client):
-        response = await client.get("/health")
+        response = await client.get("/api/v1/health")
         assert response.status_code == 200
 
     @pytest.mark.asyncio
     async def test_health_endpoint_shape(self, client):
-        response = await client.get("/health")
+        response = await client.get("/api/v1/health")
         data = response.json()
         assert data["status"] == "ok"
         assert data["version"] == "0.1.0"
@@ -110,28 +125,22 @@ class TestHealth:
 
     @pytest.mark.asyncio
     async def test_health_endpoint_timestamp_is_iso(self, client):
-        response = await client.get("/health")
+        response = await client.get("/api/v1/health")
         data = response.json()
         from datetime import datetime
 
         datetime.fromisoformat(data["timestamp"])
 
 
-class TestUsersAPI:
+class TestAuthAPI:
     @pytest.mark.asyncio
-    async def test_create_user(self, client):
-        response = await client.post(
-            "/api/v1/users",
-            params={
-                "email": "user@example.com",
-                "business_name": "Test S.A. de C.V.",
-                "business_type": "persona_juridica",
-                "nit": "1234-567890-123-4",
-                "nrc": "123456-7",
-                "regimen_fiscal": "general",
-            },
-        )
-        assert response.status_code == 200
+    async def test_register_success(self, client):
+        response = await client.post("/api/v1/auth/register", json=REGISTER_BODY)
+        assert response.status_code == 201
+        set_cookie = response.headers.get("set-cookie")
+        assert set_cookie is not None
+        assert "HttpOnly" in set_cookie
+        assert "access_token" in set_cookie
         body = response.json()
         assert body["errors"] == []
         assert body["data"]["email"] == "user@example.com"
@@ -141,49 +150,109 @@ class TestUsersAPI:
         assert "user_id" in body["data"]
 
     @pytest.mark.asyncio
-    async def test_create_user_with_default_regimen(self, client):
+    async def test_register_short_password(self, client):
+        body = {**REGISTER_BODY, "password": "123"}
+        response = await client.post("/api/v1/auth/register", json=body)
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_register_duplicate_email(self, client):
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
+        response = await client.post("/api/v1/auth/register", json=REGISTER_BODY)
+        assert response.status_code == 409
+        body = response.json()
+        assert body["errors"][0]["code"] == "EMAIL_EXISTS"
+
+    @pytest.mark.asyncio
+    async def test_login_success(self, client):
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
         response = await client.post(
-            "/api/v1/users",
-            params={
-                "email": "user2@example.com",
-                "business_name": "Default S.A.",
-                "business_type": "persona_natural",
-                "nit": "5678-123456-789-1",
-            },
+            "/api/v1/auth/login",
+            json={"email": REGISTER_BODY["email"], "password": REGISTER_BODY["password"]},
         )
         assert response.status_code == 200
+        set_cookie = response.headers.get("set-cookie")
+        assert set_cookie is not None
+        assert "HttpOnly" in set_cookie
+        assert "access_token" in set_cookie
         body = response.json()
-        assert body["data"]["regimen_fiscal"] == "simplificado"
+        assert body["errors"] == []
+        assert body["data"]["email"] == REGISTER_BODY["email"]
 
     @pytest.mark.asyncio
-    async def test_get_user_by_id(self, client):
-        create_resp = await client.post(
-            "/api/v1/users",
-            params={
-                "email": "get@example.com",
-                "business_name": "Get Test S.A.",
-                "business_type": "persona_juridica",
-                "nit": "1111-222333-444-5",
-            },
+    async def test_login_wrong_password(self, client):
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": REGISTER_BODY["email"], "password": "wrongPassword1"},
         )
-        user_id = create_resp.json()["data"]["user_id"]
-
-        response = await client.get(f"/api/v1/users/{user_id}")
-        assert response.status_code == 200
+        assert response.status_code == 401
         body = response.json()
-        assert body["data"]["email"] == "get@example.com"
-        assert body["data"]["user_id"] == user_id
+        assert body["errors"][0]["code"] == "INVALID_CREDENTIALS"
 
     @pytest.mark.asyncio
-    async def test_get_user_not_found(self, client):
-        response = await client.get(
-            "/api/v1/users/nonexistent-user-id"
+    async def test_login_wrong_email(self, client):
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "nonexistent@example.com", "password": "somePass123"},
         )
+        assert response.status_code == 401
+        body = response.json()
+        assert body["errors"][0]["code"] == "INVALID_CREDENTIALS"
+
+    @pytest.mark.asyncio
+    async def test_users_me_with_cookie(self, app, client):
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
+        response = await client.get("/api/v1/users/me")
         assert response.status_code == 200
         body = response.json()
-        assert body["data"] is None
-        assert len(body["errors"]) == 1
-        assert body["errors"][0]["code"] == "NOT_FOUND"
+        assert body["data"]["email"] == REGISTER_BODY["email"]
+        assert body["data"]["business_name"] == REGISTER_BODY["business_name"]
+
+    @pytest.mark.asyncio
+    async def test_users_me_no_cookie(self, app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as fresh:
+            response = await fresh.get("/api/v1/users/me")
+        assert response.status_code == 401
+        body = response.json()
+        assert body["detail"]["errors"][0]["code"] == "UNAUTHENTICATED"
+
+    @pytest.mark.asyncio
+    async def test_logout(self, app, client):
+        await client.post("/api/v1/auth/register", json=REGISTER_BODY)
+        response = await client.post("/api/v1/auth/logout")
+        assert response.status_code == 200
+        set_cookie = response.headers.get("set-cookie")
+        assert set_cookie is not None
+        assert "Max-Age=0" in set_cookie or "expires=" in set_cookie.lower()
+        assert "access_token=" in set_cookie
+        me = await client.get("/api/v1/users/me")
+        assert me.status_code == 401
+        me_body = me.json()
+        assert me_body["detail"]["errors"][0]["code"] == "UNAUTHENTICATED"
+
+    @pytest.mark.asyncio
+    async def test_old_users_endpoint_gone(self, client):
+        response = await client.post("/api/v1/users")
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_expired_token(self, app):
+        settings = get_settings()
+        expired_payload = {
+            "sub": "nonexistent-id",
+            "email": "test@example.com",
+            "exp": datetime.now(timezone.utc) - timedelta(hours=1),
+        }
+        token = jwt.encode(expired_payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as fresh:
+            fresh.cookies.set("access_token", token)
+            response = await fresh.get("/api/v1/users/me")
+        assert response.status_code == 401
+        body = response.json()
+        assert body["detail"]["errors"][0]["code"] == "UNAUTHENTICATED"
 
 
 class TestTransactionsAPI:
@@ -341,8 +410,8 @@ class TestAppFactory:
     def test_create_app_routes_registered(self):
         app = create_app()
         routes = [r.path for r in app.routes]
-        assert "/health" in routes
-        assert "/api/v1/users" in routes or "/api/v1/users/{user_id}" in routes
+        assert "/api/v1/health" in routes
+        assert "/api/v1/users/me" in routes or "/api/v1/users/{user_id}" in routes
 
     def test_custom_settings(self):
         with patch(
