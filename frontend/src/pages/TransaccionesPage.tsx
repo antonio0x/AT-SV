@@ -66,7 +66,7 @@ export default function TransaccionesPage() {
   const [editingTx, setEditingTx] = useState<TransactionBFF | null>(null);
   const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
   const [dateTo, setDateTo] = useState(filters.date_to ?? '');
-  const [typeFilter, setTypeFilter] = useState(filters.type ?? '');
+  const [typeFilter, setTypeFilter] = useState<string>(filters.type ?? '');
 
   useEffect(() => {
     fetchTransactions();

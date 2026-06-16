@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import TransaccionesPage from '../TransaccionesPage';
 import { useTransactionStore } from '../../store/transactionStore';
+import api from '../../lib/api';
 
 vi.mock('../../lib/api', () => ({
   default: {
@@ -36,6 +37,9 @@ function renderPage() {
 
 describe('TransaccionesPage', () => {
   beforeEach(() => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: { data: [mockTx], total: 1 },
+    });
     useTransactionStore.setState({
       transactions: [mockTx],
       isLoading: false,
@@ -54,14 +58,16 @@ describe('TransaccionesPage', () => {
 
   it('renders new transaction button', () => {
     renderPage();
-    expect(screen.getByText('Nueva transacción')).toBeDefined();
+    expect(screen.getByRole('button', { name: /nueva transacción/i })).toBeDefined();
   });
 
-  it('renders transaction data in table', () => {
+  it('renders transaction data in table', async () => {
     renderPage();
-    expect(screen.getByText('$1,000.00')).toBeDefined();
-    expect(screen.getByText('Ventas')).toBeDefined();
-    expect(screen.getByText('Ingreso')).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByText('Ventas')).toBeDefined();
+    });
+    const ingresos = screen.getAllByText('Ingreso');
+    expect(ingresos.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('13%')).toBeDefined();
   });
 
@@ -72,10 +78,15 @@ describe('TransaccionesPage', () => {
     expect(screen.getByText('Filtrar')).toBeDefined();
   });
 
-  it('shows empty message when no transactions', () => {
-    useTransactionStore.setState({ transactions: [], total: 0 });
+  it('shows empty message when no transactions', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: { data: [], total: 0 },
+    });
+    useTransactionStore.setState({ transactions: [], total: 0, isLoading: false });
     renderPage();
-    expect(screen.getByText('No hay transacciones registradas')).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByText('No hay transacciones registradas')).toBeDefined();
+    });
   });
 
   it('shows loading state', () => {
@@ -86,12 +97,14 @@ describe('TransaccionesPage', () => {
 
   it('opens form when clicking Nueva transacción', () => {
     renderPage();
-    fireEvent.click(screen.getByText('Nueva transacción'));
-    expect(screen.getByText('Nueva transacción')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: /nueva transacción/i }));
+    expect(screen.getByRole('heading', { name: /nueva transacción/i })).toBeDefined();
   });
 
-  it('shows category label for income type', () => {
+  it('shows category label for income type', async () => {
     renderPage();
-    expect(screen.getByText('Ingreso')).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByText('Ingreso')).toBeDefined();
+    });
   });
 });

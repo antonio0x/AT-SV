@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import TransactionForm from '../TransactionForm';
 
 const defaultProps = {
@@ -90,8 +90,8 @@ describe('TransactionForm', () => {
     fireEvent.change(screen.getByLabelText('Categoría'), {
       target: { value: 'ventas' },
     });
-    fireEvent.click(screen.getByText('Crear transacción'));
-    await vi.waitFor(() => {
+    fireEvent.click(screen.getByRole('button', { name: /crear transacción/i }));
+    await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(
         expect.objectContaining({
           amount: 250,
@@ -110,12 +110,13 @@ describe('TransactionForm', () => {
   });
 
   it('shows validation error for empty amount', async () => {
-    render(<TransactionForm {...defaultProps} />);
-    fireEvent.click(screen.getByText('Crear transacción'));
-    await vi.waitFor(() => {
+    const { container } = render(<TransactionForm {...defaultProps} />);
+    const form = container.querySelector('form')!;
+    fireEvent.submit(form);
+    await waitFor(() => {
       expect(
         screen.getByText('El monto debe ser un número positivo'),
       ).toBeDefined();
-    });
+    }, { timeout: 3000 });
   });
 });
