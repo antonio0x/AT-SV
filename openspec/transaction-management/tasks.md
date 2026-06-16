@@ -1,38 +1,38 @@
 # SDD Tasks: Transaction Management
 
-## T1 — Add request schemas + fix TransactionBFF + fix repository interface
+## ✅ T1 — Add request schemas + fix TransactionBFF + fix repository interface
 
+**Status**: ✅ Done
 **Files**: `backend/src/api/bff/schemas.py`, `backend/src/domain/interfaces/repository.py`
 **Effort**: S (15 min)
 **Depends**: none
-**Details**: Add `TransactionCreateRequest`, `TransactionUpdateRequest` Pydantic models; add `created_at: str` to `TransactionBFF`; add `page/limit` to abstract `get_by_user_id`
+**Details**: Added `TransactionCreateRequest`, `TransactionUpdateRequest` Pydantic models; added `created_at: str` to `TransactionBFF`; added `page/limit` to abstract `get_by_user_id`
 
-## T2 — Extract `get_tx_repo` to `dependencies.py`
+## ✅ T2 — Extract `get_tx_repo` to `dependencies.py`
 
+**Status**: ✅ Done
 **Files**: `backend/src/api/dependencies.py`, `backend/src/api/routes/transactions.py`, `backend/src/api/routes/taxes.py`
 **Effort**: XS (5 min)
 **Depends**: none
 
-## T3 — Refactor POST + GET /transactions to JWT auth + JSON body
+## ✅ T3+T4 — Refactor transactions CRUD to JWT auth + JSON body (combined)
 
+**Status**: ✅ Done
 **Files**: `backend/src/api/routes/transactions.py`
 **Effort**: M (45 min)
 **Depends**: T1, T2
+**Note**: Combined — same file, single diff hunk
 
-## T4 — Add GET / PUT / DELETE /transactions/{id} with JWT auth
+## ✅ T5 — Fix tax projection filtering + JWT auth
 
-**Files**: `backend/src/api/routes/transactions.py`
-**Effort**: M (45 min)
-**Depends**: T1, T2
-
-## T5 — Fix tax projection filtering + JWT auth
-
+**Status**: ✅ Done
 **Files**: `backend/src/api/routes/taxes.py`, `backend/src/application/use_cases/get_tax_projection.py`
 **Effort**: S (20 min)
 **Depends**: T2, T3
 
-## T6 — Update backend tests for all changes
+## ✅ T6 — Update backend tests for all changes
 
+**Status**: ✅ Done (30/30 tests passing)
 **Files**: `backend/tests/test_api.py`
 **Effort**: L (90 min)
 **Depends**: T3, T4, T5
