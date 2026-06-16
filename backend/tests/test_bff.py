@@ -93,6 +93,7 @@ class TestTransactionBFF:
             date="2025-01-15",
             iva=Decimal("19.50"),
             iva_rate=Decimal("0.13"),
+            created_at="2025-01-15T10:00:00",
         )
         assert tx.transaction_id == "tx-1"
         assert tx.type == "income"
@@ -113,6 +114,7 @@ class TestTransactionBFF:
             date="2025-02-01",
             iva=Decimal("6.50"),
             iva_rate=Decimal("0.13"),
+            created_at="2025-02-01T10:00:00",
         )
         assert tx.description is None
 
@@ -126,6 +128,7 @@ class TestTransactionBFF:
             date="2025-03-01",
             iva=Decimal("13.00"),
             iva_rate=Decimal("0.13"),
+            created_at="2025-03-01T10:00:00",
         )
         data = tx.model_dump()
         assert data["type"] == "expense"
