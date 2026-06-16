@@ -37,45 +37,52 @@
 **Effort**: L (90 min)
 **Depends**: T3, T4, T5
 
-## T7 — UI Kit: Button, Input, Select, Badge, Card
+## ✅ T7 — UI Kit: Button, Input, Select, Badge, Card
 
+**Status**: ✅ Done
 **Files**: `frontend/src/components/ui/Button.tsx`, `Input.tsx`, `Select.tsx`, `Badge.tsx`, `Card.tsx`
 **Effort**: M (60 min)
 **Depends**: none
 
-## T8 — UI Kit: Table component
+## ✅ T8 — UI Kit: Table component
 
+**Status**: ✅ Done
 **Files**: `frontend/src/components/ui/Table.tsx`
 **Effort**: S (20 min)
 **Depends**: none
 
-## T9 — transactionStore (Zustand)
+## ✅ T9 — transactionStore (Zustand)
 
+**Status**: ✅ Done
 **Files**: `frontend/src/store/transactionStore.ts`
 **Effort**: M (30 min)
 **Depends**: none (only api.ts)
 
-## T10 — TransactionForm modal
+## ✅ T10 — TransactionForm modal
 
+**Status**: ✅ Done
 **Files**: `frontend/src/components/TransactionForm.tsx`
 **Effort**: M (45 min)
 **Depends**: T7
 
-## T11 — TransaccionesPage
+## ✅ T11 — TransaccionesPage
 
+**Status**: ✅ Done
 **Files**: `frontend/src/pages/TransaccionesPage.tsx`
 **Effort**: L (90 min)
 **Depends**: T7, T9, T10
 
-## T12 — Wire routes + nav
+## ✅ T12 — Wire routes + nav
 
+**Status**: ✅ Done
 **Files**: `frontend/src/App.tsx`, `frontend/src/components/layout/Header.tsx`
 **Effort**: XS (10 min)
 **Depends**: T11
 
-## T13 — Frontend component/store tests
+## ✅ T13 — Frontend component/store tests
 
-**Files**: frontend test files
+**Status**: ✅ Done (107 tests, 0 TS errors)
+**Files**: 14 test files across components, store, and pages
 **Effort**: M (60 min)
 **Depends**: T7, T9, T10, T11
 
