@@ -26,6 +26,8 @@ class GetTaxProjectionUseCase:
         total_income = Decimal("0")
         total_expenses = Decimal("0")
         for tx in transactions:
+            if tx.date.year != year:
+                continue
             if tx.type.value == "income":
                 total_income += tx.amount
             else:
