@@ -6,6 +6,7 @@ import CalculatorPage from './pages/CalculatorPage';
 import ContactPage from './pages/ContactPage';
 import LoginPage from './pages/LoginPage';
 import DocumentosPage from './pages/DocumentosPage';
+import TransaccionesPage from './pages/TransaccionesPage';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
 
@@ -22,6 +23,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/documentos" element={<DocumentosPage />} />
+            <Route path="/transacciones" element={<TransaccionesPage />} />
           </Route>
         </Routes>
       </Layout>

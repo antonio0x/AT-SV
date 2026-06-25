@@ -9,6 +9,7 @@ import {
   Home,
   LogIn,
   LogOut,
+  Receipt,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
@@ -21,6 +22,7 @@ export default function Header() {
   const navigation = [
     { name: 'Inicio', href: '/', icon: Home },
     { name: 'Calculadora', href: '/calculadora', icon: Calculator },
+    { name: 'Transacciones', href: '/transacciones', icon: Receipt },
     { name: 'Documentos', href: '/documentos', icon: FileText },
     { name: 'Contacto', href: '/contacto', icon: Users },
   ];
