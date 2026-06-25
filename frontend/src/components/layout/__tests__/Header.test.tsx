@@ -53,11 +53,28 @@ describe('Header', () => {
     expect(screen.getByText('Una Empresa Con Nomb...')).toBeDefined();
   });
 
-  it('shows navigation links', () => {
+  it('shows public navigation links when not authenticated', () => {
     renderHeader();
     expect(screen.getByText('Inicio')).toBeDefined();
     expect(screen.getByText('Calculadora')).toBeDefined();
-    expect(screen.getByText('Documentos')).toBeDefined();
     expect(screen.getByText('Contacto')).toBeDefined();
+  });
+
+  it('shows auth navigation links when authenticated', () => {
+    useAuthStore.setState({
+      user: {
+        user_id: '1',
+        email: 'a@b.com',
+        business_name: 'Test',
+        business_type: 'persona_natural',
+        regimen_fiscal: 'simplificado',
+      },
+      isAuthenticated: true,
+    });
+    renderHeader();
+    expect(screen.getByText('Dashboard')).toBeDefined();
+    expect(screen.getByText('Declaraciones')).toBeDefined();
+    expect(screen.getByText('Documentos')).toBeDefined();
+    expect(screen.getByText('Empleados')).toBeDefined();
   });
 });
