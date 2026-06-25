@@ -1,11 +1,18 @@
 from abc import ABC, abstractmethod
 from typing import AsyncContextManager
-from src.domain.interfaces.repository import UserRepository, TransactionRepository
+from src.domain.interfaces.repository import (
+    UserRepository,
+    TransactionRepository,
+    DeclarationRepository,
+    EmployeeRepository,
+)
 
 
 class UnitOfWork(ABC, AsyncContextManager["UnitOfWork"]):
     users: UserRepository
     transactions: TransactionRepository
+    declarations: DeclarationRepository
+    employees: EmployeeRepository
 
     @abstractmethod
     async def commit(self) -> None:
