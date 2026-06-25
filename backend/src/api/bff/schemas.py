@@ -1,6 +1,8 @@
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from src.domain.models.transaction import TransactionType
 
 
 class UserBFF(BaseModel):
@@ -20,6 +22,25 @@ class TransactionBFF(BaseModel):
     date: str
     iva: Decimal
     iva_rate: Decimal
+    created_at: str
+
+
+class TransactionCreateRequest(BaseModel):
+    type: TransactionType
+    amount: Decimal = Field(gt=Decimal("0"))
+    category: str
+    description: str | None = None
+    date: str | None = None
+    iva_rate: Decimal | None = None
+
+
+class TransactionUpdateRequest(BaseModel):
+    type: TransactionType | None = None
+    amount: Decimal | None = Field(None, gt=Decimal("0"))
+    category: str | None = None
+    description: str | None = None
+    date: str | None = None
+    iva_rate: Decimal | None = None
 
 
 class TaxProjectionBFF(BaseModel):

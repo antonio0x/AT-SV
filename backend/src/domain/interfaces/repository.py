@@ -36,7 +36,7 @@ class TransactionRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_by_user_id(self, user_id: str) -> list[Transaction]:
+    async def get_by_user_id(self, user_id: str, page: int = 1, limit: int = 50) -> list[Transaction]:
         ...
 
     @abstractmethod
