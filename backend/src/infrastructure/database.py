@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     transactions_table: str = "at-sv-transactions"
     tax_declarations_table: str = "at-sv-tax-declarations"
     cors_origins: str = "http://localhost:5173"
+    use_fake_repos: bool = True
+    jwt_secret_key: str = "dev-secret-change-in-prod"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

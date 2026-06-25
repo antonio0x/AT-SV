@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import HomePage from './pages/HomePage';
@@ -5,8 +6,12 @@ import CalculatorPage from './pages/CalculatorPage';
 import ContactPage from './pages/ContactPage';
 import LoginPage from './pages/LoginPage';
 import DocumentosPage from './pages/DocumentosPage';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+import { useAuthStore } from './store/authStore';
 
 function App() {
+  useEffect(() => { useAuthStore.getState().hydrate(); }, []);
+
   return (
     <BrowserRouter>
       <Layout>
@@ -15,7 +20,9 @@ function App() {
           <Route path="/calculadora" element={<CalculatorPage />} />
           <Route path="/contacto" element={<ContactPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/documentos" element={<DocumentosPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route path="/documentos" element={<DocumentosPage />} />
+          </Route>
         </Routes>
       </Layout>
     </BrowserRouter>

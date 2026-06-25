@@ -1,25 +1,83 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Menu,
   X,
   Calculator,
   FileText,
   Users,
-  Newspaper,
   Home,
-} from "lucide-react";
+  LogIn,
+  LogOut,
+} from 'lucide-react';
+import { useAuthStore } from '../../store/authStore';
 
 export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { isAuthenticated, user, logout } = useAuthStore();
 
   const navigation = [
-    { name: "Inicio", href: "/", icon: Home },
-    { name: "Calculadora", href: "/calculadora", icon: Calculator },
-    { name: "Documentos", href: "/documentos", icon: FileText },
-    { name: "Contacto", href: "/contacto", icon: Users },
+    { name: 'Inicio', href: '/', icon: Home },
+    { name: 'Calculadora', href: '/calculadora', icon: Calculator },
+    { name: 'Documentos', href: '/documentos', icon: FileText },
+    { name: 'Contacto', href: '/contacto', icon: Users },
   ];
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
+  const desktopNavLink = (
+    item: { name: string; href: string; icon: any },
+    isActive: boolean,
+  ) => {
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.name}
+        to={item.href}
+        className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+          isActive
+            ? 'bg-blue-100 text-blue-700 shadow-sm'
+            : 'text-gray-600 hover:bg-gray-100 hover:text-blue-700'
+        }`}
+      >
+        <Icon className="w-4 h-4 mr-2" />
+        {item.name}
+      </Link>
+    );
+  };
+
+  const mobileNavLink = (
+    item: { name: string; href: string; icon: any },
+    isActive: boolean,
+  ) => {
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.name}
+        to={item.href}
+        onClick={() => setMobileMenuOpen(false)}
+        className={`flex items-center px-4 py-3 rounded-lg text-base font-medium transition-all duration-200 ${
+          isActive
+            ? 'bg-blue-100 text-blue-700'
+            : 'text-gray-600 hover:bg-gray-100 hover:text-blue-700'
+        }`}
+      >
+        <Icon className="w-5 h-5 mr-3" />
+        {item.name}
+      </Link>
+    );
+  };
+
+  const displayName = user?.business_name
+    ? user.business_name.length > 20
+      ? user.business_name.slice(0, 20) + '...'
+      : user.business_name
+    : '';
 
   return (
     <header className="bg-white shadow-lg sticky top-0 z-50 border-b border-gray-200">
@@ -38,25 +96,38 @@ export default function Header() {
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex space-x-1">
+          <nav className="hidden md:flex items-center space-x-1">
             {navigation.map((item) => {
-              const Icon = item.icon;
               const isActive = location.pathname === item.href;
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    isActive
-                      ? "bg-blue-100 text-blue-700 shadow-sm"
-                      : "text-gray-600 hover:bg-gray-100 hover:text-blue-700"
-                  }`}
-                >
-                  <Icon className="w-4 h-4 mr-2" />
-                  {item.name}
-                </Link>
-              );
+              return desktopNavLink(item, isActive);
             })}
+
+            {isAuthenticated ? (
+              <div className="flex items-center space-x-2 ml-2 pl-2 border-l border-gray-200">
+                <span className="text-sm font-medium text-gray-700 truncate max-w-[140px]">
+                  {displayName}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+                >
+                  <LogOut className="w-4 h-4 mr-1.5" />
+                  Cerrar sesión
+                </button>
+              </div>
+            ) : (
+              <Link
+                to="/login"
+                className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  location.pathname === '/login'
+                    ? 'bg-blue-100 text-blue-700 shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-blue-700'
+                }`}
+              >
+                <LogIn className="w-4 h-4 mr-2" />
+                Iniciar sesión
+              </Link>
+            )}
           </nav>
 
           {/* Mobile menu button */}
@@ -80,28 +151,43 @@ export default function Header() {
         <div className="md:hidden bg-white border-t border-gray-200 shadow-lg">
           <div className="safe-area px-2 py-3 space-y-1">
             {navigation.map((item) => {
-              const Icon = item.icon;
               const isActive = location.pathname === item.href;
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center px-4 py-3 rounded-lg text-base font-medium transition-all duration-200 ${
-                    isActive
-                      ? "bg-blue-100 text-blue-700"
-                      : "text-gray-600 hover:bg-gray-100 hover:text-blue-700"
-                  }`}
-                >
-                  <Icon className="w-5 h-5 mr-3" />
-                  {item.name}
-                </Link>
-              );
+              return mobileNavLink(item, isActive);
             })}
+
+            {isAuthenticated ? (
+              <>
+                <div className="px-4 py-2 text-sm font-medium text-gray-500 border-b border-gray-100">
+                  {displayName}
+                </div>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    handleLogout();
+                  }}
+                  className="flex items-center w-full px-4 py-3 rounded-lg text-base font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+                >
+                  <LogOut className="w-5 h-5 mr-3" />
+                  Cerrar sesión
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center px-4 py-3 rounded-lg text-base font-medium transition-all duration-200 ${
+                  location.pathname === '/login'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-blue-700'
+                }`}
+              >
+                <LogIn className="w-5 h-5 mr-3" />
+                Iniciar sesión
+              </Link>
+            )}
           </div>
         </div>
       )}
     </header>
   );
 }
-
