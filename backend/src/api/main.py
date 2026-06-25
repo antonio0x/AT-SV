@@ -16,13 +16,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    from src.api.routes import auth, health, users, taxes, transactions
+    from src.api.routes import auth, health, users, taxes, transactions, declarations, employees
 
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(users.router, prefix="/api/v1")
     app.include_router(taxes.router, prefix="/api/v1")
     app.include_router(transactions.router, prefix="/api/v1")
+    app.include_router(declarations.router, prefix="/api/v1")
+    app.include_router(employees.router, prefix="/api/v1")
 
     return app
 
