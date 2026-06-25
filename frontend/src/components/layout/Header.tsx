@@ -9,6 +9,7 @@ import {
   Home,
   LogIn,
   LogOut,
+  LayoutDashboard,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
@@ -18,12 +19,20 @@ export default function Header() {
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuthStore();
 
-  const navigation = [
+  const publicNavigation = [
     { name: 'Inicio', href: '/', icon: Home },
     { name: 'Calculadora', href: '/calculadora', icon: Calculator },
-    { name: 'Documentos', href: '/documentos', icon: FileText },
     { name: 'Contacto', href: '/contacto', icon: Users },
   ];
+
+  const authNavigation = [
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Declaraciones', href: '/declaraciones', icon: FileText },
+    { name: 'Documentos', href: '/documentos', icon: FileText },
+    { name: 'Empleados', href: '/empleados', icon: Users },
+  ];
+
+  const navigation = isAuthenticated ? authNavigation : publicNavigation;
 
   const handleLogout = async () => {
     await logout();
